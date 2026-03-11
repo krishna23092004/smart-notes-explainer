@@ -1,0 +1,18 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Vector Database (Do not upload the heavy brain!)
+chroma_db/
+
+# Temporary Files from Docling
+temp_file.pdf
+temp_file
+
+# System files
+.DS_Store
