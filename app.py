@@ -44,7 +44,7 @@ with st.sidebar:
                     embeddings = OllamaEmbeddings(model="nomic-embed-text")
                     
                     st.session_state.vectorstore = Chroma.from_documents(
-                        documents=chunks, 
+                        documents=chunks,
                         embedding=embeddings,
                         persist_directory="./chroma_db"
                     )
@@ -61,7 +61,7 @@ with st.sidebar:
     # --- AI Personality Selection ---
     st.header("🧠 AI Personality")
     study_mode = st.radio(
-        "Choose how the AI responds:", 
+        "Choose how the AI responds:",
         ["Standard Assistant", "Explain Like I'm 5", "Quiz Master"]
     )
 
@@ -103,12 +103,12 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                 elif study_mode == "Quiz Master":
                     sys_prompt = "You are a strict examiner. Look at the context provided, and instead of answering the user's question, generate a difficult multiple-choice question based on the context to test their knowledge."
 
-                # --- FIX: Clean generation block ---
+                # --- Fixed: removed extra closing parenthesis ---
                 response = ollama.chat(model='llama3.2', messages=[
                     {'role': 'system', 'content': sys_prompt},
-                    *st.session_state.messages, 
+                    *st.session_state.messages,
                     {'role': 'user', 'content': full_prompt}
-                ]))
+                ])
                 
                 answer = response['message']['content']
                 st.markdown(answer)
