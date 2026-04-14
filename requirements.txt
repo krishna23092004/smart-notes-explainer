@@ -1,5 +1,5 @@
 streamlit
-docling
+pymupdf
 langchain
 langchain-text-splitters
 langchain-core
@@ -7,4 +7,3 @@ langchain-community
 langchain-ollama
 chromadb
 ollama
-opencv-python-headless

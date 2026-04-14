@@ -1,5 +1,5 @@
 import streamlit as st
-from docling.document_converter import DocumentConverter
+import fitz  # pymupdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
@@ -30,31 +30,42 @@ with st.sidebar:
     # --- Unified Analyze Logic ---
     if uploaded_file:
         if st.button(f"🔍 Deep Scan (Pages {start_page}-{end_page})"):
-            with st.spinner(f"Vision AI is reading Pages {start_page} to {end_page}..."):
+            with st.spinner(f"Reading Pages {start_page} to {end_page}..."):
                 with open("temp_file.pdf", "wb") as f:
                     f.write(uploaded_file.getbuffer())
                 
                 try:
-                    converter = DocumentConverter()
-                    result = converter.convert("temp_file.pdf", page_range=(start_page, end_page))
-                    markdown_text = result.document.export_to_markdown()
-                    
-                    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-                    chunks = text_splitter.split_documents([Document(page_content=markdown_text)])
-                    embeddings = OllamaEmbeddings(model="nomic-embed-text")
-                    
-                    st.session_state.vectorstore = Chroma.from_documents(
-                        documents=chunks,
-                        embedding=embeddings,
-                        persist_directory="./chroma_db"
-                    )
-                    st.success(f"✅ Pages {start_page} to {end_page} successfully added to the Brain!")
-                    
-                    with st.expander("📝 See what the AI extracted"):
-                        st.markdown(markdown_text[:1500] + "\n\n... (Text truncated)")
+                    # --- PyMuPDF replaces Docling ---
+                    doc = fitz.open("temp_file.pdf")
+                    markdown_text = ""
+                    for page_num in range(start_page - 1, min(end_page, len(doc))):
+                        page = doc[page_num]
+                        markdown_text += page.get_text()
+                    doc.close()
+
+                    if not markdown_text.strip():
+                        st.error("No text could be extracted from the selected pages.")
+                    else:
+                        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                        chunks = text_splitter.split_documents([Document(page_content=markdown_text)])
+                        embeddings = OllamaEmbeddings(model="nomic-embed-text")
+                        
+                        st.session_state.vectorstore = Chroma.from_documents(
+                            documents=chunks,
+                            embedding=embeddings,
+                            persist_directory="./chroma_db"
+                        )
+                        st.success(f"✅ Pages {start_page} to {end_page} successfully added to the Brain!")
+                        
+                        with st.expander("📝 See what the AI extracted"):
+                            st.markdown(markdown_text[:1500] + "\n\n... (Text truncated)")
                         
                 except Exception as e:
                     st.error(f"Error during scan: {e}")
+                
+                finally:
+                    if os.path.exists("temp_file.pdf"):
+                        os.remove("temp_file.pdf")
 
     st.divider()
     
@@ -103,7 +114,6 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                 elif study_mode == "Quiz Master":
                     sys_prompt = "You are a strict examiner. Look at the context provided, and instead of answering the user's question, generate a difficult multiple-choice question based on the context to test their knowledge."
 
-                # --- Fixed: removed extra closing parenthesis ---
                 response = ollama.chat(model='llama3.2', messages=[
                     {'role': 'system', 'content': sys_prompt},
                     *st.session_state.messages,
