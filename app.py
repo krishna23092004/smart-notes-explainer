@@ -7,6 +7,8 @@ from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import os
+import uuid
+import shutil
 from groq import Groq
 
 # ==========================================
@@ -15,9 +17,18 @@ from groq import Groq
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"] 
 client = Groq(api_key=GROQ_API_KEY)
 
-# 1. Initialize Memory
+# ==========================================
+# 1. Initialize Memory + Unique Session ID
+# ==========================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Each user gets a unique session ID → their own private ChromaDB folder
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+# Build a unique persist path for this session
+persist_path = f"./chroma_db_{st.session_state.session_id}"
 
 # --- Sidebar for Uploading & Settings ---
 with st.sidebar:
@@ -69,10 +80,11 @@ with st.sidebar:
                         
                         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
                         
+                        # ✅ FIX: Use session-specific persist_path so each user's data is isolated
                         st.session_state.vectorstore = Chroma.from_documents(
                             documents=chunks,
                             embedding=embeddings,
-                            persist_directory="./chroma_db"
+                            persist_directory=persist_path
                         )
                         st.success("✅ File successfully added to the Brain!")
                         
@@ -92,6 +104,11 @@ with st.sidebar:
     st.divider()
     if st.button("🗑️ Clear Chat Memory"):
         st.session_state.messages = []
+        # ✅ FIX: Also wipe this session's ChromaDB folder on clear
+        if os.path.exists(persist_path):
+            shutil.rmtree(persist_path)
+        if "vectorstore" in st.session_state:
+            del st.session_state.vectorstore
         st.rerun()
 
 # --- Main Chat UI ---
@@ -128,7 +145,6 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                     
                     api_messages.append({'role': 'user', 'content': full_prompt})
 
-                    # Yahan naya model (Llama 3.3) fix kar diya gaya hai
                     chat_completion = client.chat.completions.create(
                         messages=api_messages,
                         model="llama-3.3-70b-versatile", 
