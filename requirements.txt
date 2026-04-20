@@ -6,3 +6,5 @@ langchain-community
 chromadb
 groq
 sentence-transformers
+pytesseract
+Pillow
