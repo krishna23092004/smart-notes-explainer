@@ -8,3 +8,4 @@ groq
 sentence-transformers
 pytesseract
 Pillow
+protobuf<=3.20.3
