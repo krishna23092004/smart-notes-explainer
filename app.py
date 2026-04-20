@@ -3,9 +3,18 @@ import fitz  # pymupdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import OllamaEmbeddings
-import ollama
+# Ollama ki jagah free HuggingFace embeddings (Cloud par smoothly chalega)
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import os
+# Groq API import
+from groq import Groq
+
+# ==========================================
+# 🔑 GROQ API SETUP (Yahan apni API key dalein)
+# ==========================================
+# Note: Jab aap ise cloud par deploy karein, toh st.secrets ka use karna best practice hai
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]   
+client = Groq(api_key=GROQ_API_KEY)
 
 # 1. Initialize Memory in the storage locker
 if "messages" not in st.session_state:
@@ -35,7 +44,7 @@ with st.sidebar:
                     f.write(uploaded_file.getbuffer())
                 
                 try:
-                    # --- PyMuPDF replaces Docling ---
+                    # PDF Reading via PyMuPDF
                     doc = fitz.open("temp_file.pdf")
                     markdown_text = ""
                     for page_num in range(start_page - 1, min(end_page, len(doc))):
@@ -46,10 +55,14 @@ with st.sidebar:
                     if not markdown_text.strip():
                         st.error("No text could be extracted from the selected pages.")
                     else:
+                        # Splitting Text
                         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
                         chunks = text_splitter.split_documents([Document(page_content=markdown_text)])
-                        embeddings = OllamaEmbeddings(model="nomic-embed-text")
                         
+                        # Updated: Using HuggingFace Embeddings instead of Ollama
+                        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+                        
+                        # Creating Vector Database
                         st.session_state.vectorstore = Chroma.from_documents(
                             documents=chunks,
                             embedding=embeddings,
@@ -86,8 +99,9 @@ st.title("🤖 Smart Notes Explainer")
 
 # Display previous messages from memory
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    if message["role"] != "system": # Hide system messages from UI
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
 # --- The Chat Input ---
 if prompt := st.chat_input("Ask me anything about your notes..."):
@@ -114,22 +128,36 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                 elif study_mode == "Quiz Master":
                     sys_prompt = "You are a strict examiner. Look at the context provided, and instead of answering the user's question, generate a difficult multiple-choice question based on the context to test their knowledge."
 
-                response = ollama.chat(model='llama3.2', messages=[
-                    {'role': 'system', 'content': sys_prompt},
-                    *st.session_state.messages,
-                    {'role': 'user', 'content': full_prompt}
-                ])
+                # --- Groq API Call (Replaced Ollama) ---
+                try:
+                    # Construct message history for Groq
+                    api_messages = [{'role': 'system', 'content': sys_prompt}]
+                    # Ignore the last user message in history because we append full_prompt below
+                    for msg in st.session_state.messages[:-1]:
+                        api_messages.append({'role': msg['role'], 'content': msg['content']})
+                    
+                    api_messages.append({'role': 'user', 'content': full_prompt})
+
+                    # Call Groq (Using Llama 3.1 70B for high quality responses)
+                    chat_completion = client.chat.completions.create(
+                        messages=api_messages,
+                        model="llama-3.1-70b-versatile",
+                        temperature=0.3,
+                    )
+                    
+                    answer = chat_completion.choices[0].message.content
+                    st.markdown(answer)
+                    
+                    # Source Citations
+                    with st.expander("🔍 View Exact Source Text (Anti-Hallucination)"):
+                        st.caption("The AI used these specific chunks from your document to answer:")
+                        for i, doc in enumerate(docs):
+                            st.markdown(f"**Snippet {i+1}:**")
+                            st.info(doc.page_content)
+                    
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
                 
-                answer = response['message']['content']
-                st.markdown(answer)
-                
-                # Source Citations
-                with st.expander("🔍 View Exact Source Text (Anti-Hallucination)"):
-                    st.caption("The AI used these specific chunks from your document to answer:")
-                    for i, doc in enumerate(docs):
-                        st.markdown(f"**Snippet {i+1}:**")
-                        st.info(doc.page_content)
-                
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+                except Exception as e:
+                    st.error(f"Groq API Error: {e}\nCheck your API key or internet connection.")
             else:
                 st.warning("Please upload a file and click 'Deep Scan' first!")
