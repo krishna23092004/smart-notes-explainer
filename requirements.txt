@@ -4,7 +4,7 @@ langchain-text-splitters
 langchain-core
 langchain-community
 chromadb
-google-generativeai
+groq
 sentence-transformers
 pytesseract
 Pillow
