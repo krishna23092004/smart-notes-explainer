@@ -9,13 +9,14 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 import os
 import uuid
 import shutil
-from groq import Groq
+import google.generativeai as genai
 
 # ==========================================
-# 🔑 GROQ API SETUP
+# 🔑 GEMINI API SETUP
 # ==========================================
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"] 
-client = Groq(api_key=GROQ_API_KEY)
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 # ==========================================
 # 1. Initialize Memory + Unique Session ID
@@ -80,7 +81,7 @@ with st.sidebar:
                         
                         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
                         
-                        # ✅ FIX: Use session-specific persist_path so each user's data is isolated
+                        # ✅ Session-specific persist_path — data isolation
                         st.session_state.vectorstore = Chroma.from_documents(
                             documents=chunks,
                             embedding=embeddings,
@@ -104,7 +105,7 @@ with st.sidebar:
     st.divider()
     if st.button("🗑️ Clear Chat Memory"):
         st.session_state.messages = []
-        # ✅ FIX: Also wipe this session's ChromaDB folder on clear
+        # ✅ Also wipe this session's ChromaDB folder on clear
         if os.path.exists(persist_path):
             shutil.rmtree(persist_path)
         if "vectorstore" in st.session_state:
@@ -129,8 +130,7 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
             if "vectorstore" in st.session_state:
                 docs = st.session_state.vectorstore.similarity_search(prompt, k=3)
                 context = "\n".join([d.page_content for d in docs])
-                full_prompt = f"Context: {context}\n\nQuestion: {prompt}"
-                
+
                 if study_mode == "Standard Assistant":
                     sys_prompt = "You are a helpful study assistant. Base your answers ONLY on the provided context."
                 elif study_mode == "Explain Like I'm 5":
@@ -138,20 +138,25 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                 elif study_mode == "Quiz Master":
                     sys_prompt = "You are a strict examiner. Look at the context provided, and instead of answering the user's question, generate a difficult multiple-choice question based on the context to test their knowledge."
 
-                try:
-                    api_messages = [{'role': 'system', 'content': sys_prompt}]
-                    for msg in st.session_state.messages[:-1]:
-                        api_messages.append({'role': msg['role'], 'content': msg['content']})
-                    
-                    api_messages.append({'role': 'user', 'content': full_prompt})
+                # Build conversation history for Gemini (uses 'model' instead of 'assistant')
+                history = []
+                for msg in st.session_state.messages[:-1]:
+                    role = "model" if msg["role"] == "assistant" else "user"
+                    history.append({"role": role, "parts": [msg["content"]]})
 
-                    chat_completion = client.chat.completions.create(
-                        messages=api_messages,
-                        model="llama-3.3-70b-versatile", 
-                        temperature=0.3,
-                    )
+                try:
+                    # ✅ Gemini API call with system prompt + RAG context + chat history
+                    chat = model.start_chat(history=history)
                     
-                    answer = chat_completion.choices[0].message.content
+                    full_prompt = (
+                        f"{sys_prompt}\n\n"
+                        f"Context from uploaded document:\n{context}\n\n"
+                        f"User Question: {prompt}"
+                    )
+
+                    response = chat.send_message(full_prompt)
+                    answer = response.text
+
                     st.markdown(answer)
                     
                     with st.expander("🔍 View Exact Source Text (Anti-Hallucination)"):
@@ -163,6 +168,6 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                     st.session_state.messages.append({"role": "assistant", "content": answer})
                 
                 except Exception as e:
-                    st.error(f"Groq API Error: {e}")
+                    st.error(f"Gemini API Error: {e}")
             else:
                 st.warning("Please upload a file and click 'Deep Scan File' first!")

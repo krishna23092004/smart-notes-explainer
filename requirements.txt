@@ -4,8 +4,9 @@ langchain-text-splitters
 langchain-core
 langchain-community
 chromadb
-groq
+google-generativeai
 sentence-transformers
 pytesseract
 Pillow
 protobuf<=3.20.3
+ 
