@@ -128,9 +128,10 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                     
                     api_messages.append({'role': 'user', 'content': full_prompt})
 
+                    # Yahan naya model (Llama 3.3) fix kar diya gaya hai
                     chat_completion = client.chat.completions.create(
                         messages=api_messages,
-                        model="llama-3.1-70b-versatile",
+                        model="llama-3.3-70b-versatile", 
                         temperature=0.3,
                     )
                     
@@ -146,6 +147,6 @@ if prompt := st.chat_input("Ask me anything about your notes..."):
                     st.session_state.messages.append({"role": "assistant", "content": answer})
                 
                 except Exception as e:
-                    st.error(f"Groq API Error: {e}\nCheck your API key or internet connection.")
+                    st.error(f"Groq API Error: {e}")
             else:
                 st.warning("Please upload a file and click 'Deep Scan File' first!")
